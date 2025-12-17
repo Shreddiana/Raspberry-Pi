@@ -1,0 +1,87 @@
+import os
+import re
+import requests
+from guessit import guessit
+
+# ==============================
+# KONFIGURATION
+# ==============================
+
+API_KEY = "3a579b03de4384af4c5e39e54ce53576"
+SOURCE_DIR = r"E:\Filme"
+TARGET_DIR = r"E:\Filme"
+
+CREATE_MOVIE_FOLDER = True  # True = Film in eigenen Ordner legen
+LANGUAGE = "de-DE"          # de-DE oder en-US
+DRY_RUN = False
+
+VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov")
+
+# ==============================
+# FUNKTIONEN
+# ==============================
+
+def clean_filename(name):
+    """Entfernt problematische Zeichen für Windows"""
+    return re.sub(r'[<>:"/\\|?*]', '', name)
+
+def search_movie(title, year=None):
+    url = "https://api.themoviedb.org/3/search/movie"
+    params = {
+        "api_key": API_KEY,
+        "query": title,
+        "language": LANGUAGE
+    }
+    if year:
+        params["year"] = year
+
+    r = requests.get(url, params=params)
+    r.raise_for_status()
+    results = r.json()["results"]
+    return results[0] if results else None
+
+
+# ==============================
+# HAUPTLOGIK
+# ==============================
+
+for file in os.listdir(SOURCE_DIR):
+    if not file.lower().endswith(VIDEO_EXTENSIONS):
+        continue
+
+    info = guessit(file)
+
+    title = info.get("title")
+    year = info.get("year")
+
+    if not title:
+        print(f"❌ Titel nicht erkannt: {file}")
+        continue
+
+    movie = search_movie(title, year)
+    if not movie:
+        print(f"❌ Film nicht gefunden: {file}")
+        continue
+
+    movie_title = movie["title"]
+    movie_year = movie.get("release_date", "0000")[:4]
+
+    clean_title = movie_title.replace(":", " -")
+
+    new_filename = f"{clean_title} ({movie_year}){os.path.splitext(file)[1]}"
+
+    if CREATE_MOVIE_FOLDER:
+        target_path = os.path.join(TARGET_DIR, f"{clean_title} ({movie_year})")
+    else:
+        target_path = TARGET_DIR
+
+    os.makedirs(target_path, exist_ok=True)
+
+    old_path = os.path.join(SOURCE_DIR, file)
+    new_path = os.path.join(target_path, new_filename)
+
+    if DRY_RUN:
+        print(f"[TEST] {old_path} → {new_path}")
+    else:
+        os.rename(old_path, new_path)
+        print(f"✔ {file} → {new_filename}")
